@@ -1,0 +1,2175 @@
+//Virtual Mileage Logs Controller (VMLC) source code
+//Written by Elder Colby James Ransom of the Idaho Boise Mission (2019-2021)
+//fourLeafBacon - (YouTube)
+//handsome_ransom_productions - Instagram
+//11/11/2021 project completion
+
+// User Available Scripts
+function pullAllData() {
+  //Pulls a current/old Report for the specified month
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //check DEPENDANCIES
+  var monthEmpty = master.getRange('A3').getValue(); // month referenced in scripts
+  var yearEmpty = master.getRange('B3').getValue(); // Year referenced in scripts
+  if (monthEmpty != ""){
+    if (yearEmpty != ""){
+        //clear the current report sheet
+        master.getSheetByName("Current Report").getRange("A4:L1000").setValue(""); 
+
+        //get the month we want to pull
+        var monthToPull = master.getRange("A3").getValues() +'-'+ master.getRange("B3").getValues();
+
+        //find the folder that contains the actual logs
+        var masterId = master.getId();
+        var masterFile = DriveApp.getFileById(masterId);
+        var masterFolder = masterFile.getParents();
+        var childFolder = masterFolder.next().getFolders().next();
+
+        //get a list of mileage logs
+        var file = childFolder.getFiles();
+
+        //var to tell us how many sheets did not exist out of the files
+        var notExist = 0;
+
+        //var to keep track of iteration
+        var i = 4; 
+
+        //loop through all mileage logs
+        while (file.hasNext()) {//If there is a next file, then continue looping
+
+          //get the file id to pull data
+          var currentLog = file.next();
+          var logId = currentLog.getId();
+        
+          //check to see if the log sheet we want exists
+          var logSheets = SpreadsheetApp.openById(logId).getSheets();
+
+          //boolian var to represent if log sheet exists
+          var sheetExists = false;
+
+          for(var w = 0; w<logSheets.length; w++){
+            if(logSheets[w].getName()==monthToPull){
+              var sheetExists = true;
+              break;
+            }
+          }
+          if(sheetExists == true){
+            //pull the data we want
+            var carNumber = SpreadsheetApp.openById(logId).getSheetByName("Car Number").getRange("A1").getValue(); //car number
+        
+            var sheetToPullFrom = SpreadsheetApp.openById(logId).getSheetByName(monthToPull);
+            var makeModel = sheetToPullFrom.getRange("C2").getValue();
+            var driver = sheetToPullFrom.getRange("C4").getValue();
+            var endodometer = sheetToPullFrom.getRange("A39").getValue();
+            var startodometer = sheetToPullFrom.getRange("B6").getValue();
+            var vin = sheetToPullFrom.getRange("H2").getValue();
+            var licensePlate = sheetToPullFrom.getRange("I3").getValue();
+            var startDate = sheetToPullFrom.getRange("K2").getValue();
+            var area = sheetToPullFrom.getRange("K4").getValue();
+            var milesDriven = sheetToPullFrom.getRange("J39").getValue();
+            var mileAllottment = sheetToPullFrom.getRange("E5:E6").getValue();
+            
+            //If not the end of the month show estimated calculations
+            if(!endodometer){
+              var endodometer = "Driver log incomplete currently ~ " + (startodometer + sheetToPullFrom.getRange("D37").getValue());
+            }
+            if(!milesDriven){
+              var milesDriven = (sheetToPullFrom.getRange("D37").getValue());
+            }
+
+            //push the data to our master sheet
+            master.getSheetByName("Current Report").getRange("A"+i+":L"+i).setValues([[carNumber,milesDriven,mileAllottment,startDate,area,startodometer,endodometer,driver,makeModel,licensePlate,vin,currentLog.getUrl()]]); 
+            
+          }else{
+            master.getSheetByName("Current Report").getRange("A"+i).setValue("Sheet '"+monthToPull+"' does not exist in file '"+currentLog.getName()+"'.");
+            master.getSheetByName("Current Report").getRange("F"+i).setValue(currentLog.getUrl());
+            Logger.log("Sheet '"+monthToPull+"' does not exist in '"+currentLog.getName()+"'.");
+            notExist++;
+          }
+          //increase the index by 1
+          i++;
+
+        }
+        if(notExist>0){
+          //var ui = SpreadsheetApp.getUi();
+          Logger.log(notExist+" files did not have the sheet "+monthToPull+ ". Check 'Current Report' for details.");
+        }
+        Logger.log("end of pull all data");
+
+    }else{
+      var ui = SpreadsheetApp.getUi();
+      ui.alert("Year referenced in scripts ('B3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+    }
+  }else{
+    var ui = SpreadsheetApp.getUi();
+    ui.alert("Month referenced in scripts ('A3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+  }
+
+  
+}
+
+
+function pushData() {
+  //pushes the updated assosiated car/driver/information in "Master Data" to all the Driver Logs
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+  
+  var monthEmpty = master.getRange('A3').getValue(); // month referenced in scripts
+  var yearEmpty = master.getRange('B3').getValue(); // Year referenced in scripts
+  if (monthEmpty != ""){
+    if (yearEmpty != ""){
+      //get the month/sheet we want to interact with
+      var monthToPull = master.getRange("A3").getValues() +'-'+ master.getRange("B3").getValues();
+
+      //get the Start date for this log
+      var startDate = master.getRange("A3").getValues() +'/1/'+ master.getRange("B3").getValues();
+      
+      //find the folder that contains the actual logs
+      var masterId = master.getId();
+      var masterFile = DriveApp.getFileById(masterId);
+      var masterFolder = masterFile.getParents();
+      var childFolder = masterFolder.next().getFolders().next();
+
+      //Get the car log index to find info
+      var carLogIndex = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data").getRange("F:F").getValues();
+      
+      //get a list of mileage logs
+      var file = childFolder.getFiles(); 
+      
+      //loop through all mileage logs
+      while (file.hasNext()) {//If there is a next file, then continue looping
+      
+        //get the file id to pull data
+        var currentLog = file.next();
+        var logId = currentLog.getId();
+      
+        //check to see if the log sheet we want exists
+        var logSheets = SpreadsheetApp.openById(logId).getSheets();
+
+        //boolian var to represent if log sheet exists
+        var sheetExists = false;
+
+        for(var w = 0; w<logSheets.length; w++){
+          if(logSheets[w].getName()==monthToPull){
+            var sheetExists = true;
+            break;
+          }
+        }
+        if(sheetExists == true){
+
+          //Find Current Car log we are working with
+          var carNumber = SpreadsheetApp.openById(logId).getSheetByName("Car Number").getRange("A1").getValue();
+
+          //Find what line the right car is on.
+          for(var i=0; carLogIndex[i] != carNumber; i++){
+              if (i>=carLogIndex.length){
+              break;
+              }
+            }
+          var index = (i+1);
+
+          //get all the car info to push
+          var carInfo = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data").getRange("A"+index+":"+"P"+index).getValues();
+          //Logger.log(carInfo[0][2]);
+        
+          //boolian to represent if the car was found
+          var carFound = true;
+
+          //Find what line of the index the right car is on.
+          for(var i=0; carLogIndex[i] != carNumber; i++){
+          if (i>=carLogIndex.length){
+            var carFound = false;
+            break;
+            }
+          }
+
+          //if the car was not found we need not waste resources
+          if (carFound == true){
+            //check if there is more than one designated driver
+            if(carInfo[0][13]){
+              var driver = carInfo[0][12] + ", " + carInfo[0][13];
+            }else{
+              var driver = carInfo[0][12];
+            }
+
+            //check if there is more than one area
+            if(carInfo[0][13]){
+              var area = carInfo[0][2] + ", " + carInfo[0][3];
+            }else{
+              var area = carInfo[0][2];
+            }
+            //Write to the Current Car Log with the newly Updated Information
+            var currentLogToPush = SpreadsheetApp.openById(logId).getSheetByName(monthToPull);
+            currentLogToPush.getRange("C2").setValue(carInfo[0][6] +" "+ carInfo[0][7]); //makeModel
+            currentLogToPush.getRange("C4").setValue(driver); //driver
+            currentLogToPush.getRange("E5").setValue(carInfo[0][10]); //Allotted Miles
+            currentLogToPush.getRange("H2").setValue(carInfo[0][4]); //vin
+            currentLogToPush.getRange("I3").setValue(carInfo[0][9]); //licensePlate
+            currentLogToPush.getRange("K2").setValue(startDate); //startDate
+            currentLogToPush.getRange("K4").setValue(area); //area
+            currentLogToPush.getRange("I4").setValue(carNumber); //carNumber
+          }else{
+            Logger.log("The information for car # "+carNumber+" was not found in 'Master Data' - skipping...");
+          }
+        }
+      }
+    }else{
+      var ui = SpreadsheetApp.getUi();
+      ui.alert("Year referenced in scripts ('B3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+    }
+  }else{
+    var ui = SpreadsheetApp.getUi();
+    ui.alert("Month referenced in scripts ('A3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+  }
+
+  
+}
+
+
+function pushDataForSingleLog() {
+  //pushes the updated assosiated car/driver/information in "Master Data" to all the Driver Logs
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+  
+  //check DEPENDANCIES
+  var monthEmpty = master.getRange('A3').getValue(); // month referenced in scripts
+  var yearEmpty = master.getRange('B3').getValue(); // Year referenced in scripts
+  var emailEmpty = master.getRange('C3:D3').getValue(); // email referenced in scripts
+  if (monthEmpty != ""){
+    if (yearEmpty != ""){
+      if (emailEmpty != ""){
+        //declares the UI as a variable to tell errors
+        var ui = SpreadsheetApp.getUi();
+        //ui.alert();
+
+        //get the month/sheet we want to interact with
+        var monthToPull = master.getRange("A3").getValues() +'-'+ master.getRange("B3").getValues();
+
+        //get the due date for this log
+        var startDate = master.getRange("A3").getValues() +'/1/'+ master.getRange("B3").getValues();
+
+        //get the car log we are wanting to push data to
+        var wantedCarNumber = master.getRange("E3").getValue();
+        
+        //find the folder that contains the actual logs
+        var masterId = master.getId();
+        var masterFile = DriveApp.getFileById(masterId);
+        var masterFolder = masterFile.getParents();
+        var childFolder = masterFolder.next().getFolders().next();
+
+        //Get the car log index to find info
+        var carLogIndex = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data").getRange("F:F").getValues();
+        
+        //boolian to represent if the car was found
+        var carFound = true;
+
+        //Find what line of the index the right car is on.
+        for(var e=0; carLogIndex[e] != wantedCarNumber; e++){
+          if (e>=carLogIndex.length){
+            var carFound = false;
+            break;
+          }
+        }
+        var index = (e+1);
+
+        Logger.log("Car found "+carFound);
+        //if the car was not found we need not waste resources
+        if (carFound == true){
+          
+          //get a list of mileage logs
+          var file = childFolder.getFiles(); 
+        
+          //loop through all mileage logs
+          while (file.hasNext()) {//If there is a next file, then continue looping
+        
+            //get the file id to pull data
+            var currentLog = file.next();
+            var logId = currentLog.getId();
+
+            //Logger.log(logId);
+            //check to see if the log sheet we want exists
+            var logSheets = SpreadsheetApp.openById(logId).getSheets();
+
+            //boolian var to represent if log sheet exists
+            var sheetExists = false;
+
+            for(var w = 0; w<logSheets.length; w++){
+              if(logSheets[w].getName()==monthToPull){
+                var sheetExists = true;
+                break;
+              }
+            }
+            
+            if(sheetExists == true){
+              
+              //Find Current Car log we are working with
+              var carNumber = SpreadsheetApp.openById(logId).getSheetByName("Car Number").getRange("A1").getValue();
+
+              if (carNumber == wantedCarNumber){
+                var carInfo = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data").getRange("A"+index+":P"+index).getValues();
+                
+                //check if there is more than one designated driver
+                if(carInfo[0][13]){
+                  var driver = carInfo[0][12] + ", " + carInfo[0][13];
+                }else{
+                  var driver = carInfo[0][12];
+                }
+
+                //check if there is more than one area
+                if(carInfo[0][3]){
+                  var area = carInfo[0][2] + ", " + carInfo[0][3];
+                }else{
+                  var area = carInfo[0][2];
+                }
+
+                Logger.log(carInfo[0]);
+                //Write to the Current Car Log with the newly Updated Information
+                var currentLogToPush = SpreadsheetApp.openById(logId).getSheetByName(monthToPull);
+                currentLogToPush.getRange("C2").setValue(carInfo[0][6] +" "+ carInfo[0][7]); //makeModel
+                currentLogToPush.getRange("C4").setValue(driver); //driver
+                currentLogToPush.getRange("E5").setValue(carInfo[0][10]); //Allotted Miles
+                currentLogToPush.getRange("H2").setValue(carInfo[0][4]); //vin
+                currentLogToPush.getRange("I3").setValue(carInfo[0][9]); //licensePlate
+                currentLogToPush.getRange("K2").setValue(startDate); //startDate
+                currentLogToPush.getRange("K4").setValue(area); //area
+                currentLogToPush.getRange("I4").setValue(carNumber); //carNumber
+
+                Logger.log("ibreak after pushing data");
+                break;
+              }
+            }else{
+              Logger.log("Car # "+carNumber+" is not car # "+wantedCarNumber);
+            }
+          }
+        }else{
+          Logger.log("The information for car # "+carNumber+" was not found in 'Master Data' - skipping...");
+          ui.alert("That car was not found in 'Master Data'!");
+        }
+      }else{
+        var ui = SpreadsheetApp.getUi();
+        ui.alert("Email Referenced in Scripts	('C3:D3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+      }
+    }else{
+      var ui = SpreadsheetApp.getUi();
+      ui.alert("Year referenced in scripts ('B3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+    }
+  }else{
+    var ui = SpreadsheetApp.getUi();
+    ui.alert("Month referenced in scripts ('A3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+  }
+}
+
+
+function emailAllReportsLandscape() {
+  //emails a pdf of the specified month to the specified email in Landscape format
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //check DEPENDANCIES
+  var monthEmpty = master.getRange('A3').getValue(); // month referenced in scripts
+  var yearEmpty = master.getRange('B3').getValue(); // Year referenced in scripts
+  var emailEmpty = master.getRange('C3:D3').getValue(); // email referenced in scripts
+  if (monthEmpty != ""){
+    if (yearEmpty != ""){
+      if (emailEmpty != ""){
+        //get the month we want to pull
+        var monthToPull = master.getRange("A3").getValue() +'-'+ master.getRange("B3").getValue();
+
+        //get the email to send it to
+        var emailToSendTo = master.getRange("C3").getValue();
+
+        //find the folder that contains the actual logs
+        var masterId = master.getId();
+        var masterFile = DriveApp.getFileById(masterId);
+        var masterFolder = masterFile.getParents();
+        var childFolder = masterFolder.next().getFolders().next();
+
+        //get a list of mileage logs
+        var file = childFolder.getFiles();
+
+        //var to tell us how many sheets did not exist out of the files
+        var notExist = 0;
+
+        //loop through all mileage logs
+        while (file.hasNext()) {//If there is a next file, then continue looping
+
+          //get the file id to pull data
+          var currentLog = file.next();
+          var logId = currentLog.getId();
+        
+          //check to see if the log sheet we want exists
+          var logSheets = SpreadsheetApp.openById(logId).getSheets();
+
+          //boolian var to represent if log sheet exists
+          var sheetExists = false;
+
+          for(var w = 0; w<logSheets.length; w++){
+            if(logSheets[w].getName()==monthToPull){
+              var sheetExists = true;
+              break;
+            }
+          }
+          if(sheetExists == true){
+
+            //Get data fields for email
+            var carNumber = SpreadsheetApp.openById(logId).getSheetByName(monthToPull).getRange("I4").getValue();
+            var area = SpreadsheetApp.openById(logId).getSheetByName(monthToPull).getRange("K4").getValue(); 
+            var makeModel = SpreadsheetApp.openById(logId).getSheetByName(monthToPull).getRange("C2").getValue();
+
+            //hide all sheets except the one we want
+            var sheets = SpreadsheetApp.openById(logId).getSheets();
+            for(var i =0;i<sheets.length;i++){
+              if(sheets[i].getName()!=monthToPull){
+                sheets[i].hideSheet();
+              }else{
+                sheets[i].showSheet();
+            }
+            }
+          
+            // Set the text body to attach to the email.
+            var body = "Mile logs for car # "+ carNumber +" "+ makeModel +" in area "+ area +"."; 
+
+            // Construct the Subject Line
+            var subject = "Car logs for car # "+ carNumber +" in area "+ area +" for "+ monthToPull;
+
+            var url = "https://docs.google.com/spreadsheets/d/"+logId+"/export"+"?format=pdf&"+"portrait=false&";
+                                                              
+            var params = {method:"GET",headers:{"authorization":"Bearer "+ ScriptApp.getOAuthToken()}};
+        
+            var response = UrlFetchApp.fetch(url, params).getBlob();
+
+            MailApp.sendEmail(emailToSendTo, subject, body, {
+                attachments: [{
+                    fileName: 'Milage Logs for Car '+ carNumber + ' in area '+ area + '.pdf',
+                    content: response.getBytes(),
+                    mimeType: "application/pdf"
+                }]
+            });
+          }else{
+            notExist++;
+            Logger.log("Sheet '"+monthToPull+ "' is not in file '"+currentLog.getName()+"'. NOT EMAILING A REPORT FOR THIS LOG!");
+          }
+        }
+        if(notExist>0){
+          //var ui = SpreadsheetApp.getUi();
+          //ui.alert(notExist+" files did not have the sheet "+monthToPull);
+          Logger.log(notExist+" files did not have the sheet "+monthToPull);
+        }
+        Logger.log("end of 'emailAllReportsPortrait'");
+      }else{
+        var ui = SpreadsheetApp.getUi();
+        ui.alert("Email Referenced in Scripts	('C3:D3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+      }
+    }else{
+      var ui = SpreadsheetApp.getUi();
+      ui.alert("Year referenced in scripts ('B3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+    }
+  }else{
+    var ui = SpreadsheetApp.getUi();
+    ui.alert("Month referenced in scripts ('A3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+  }
+}
+
+
+function emailAllReportsPortrait() {
+  //emails a pdf of the specified month to the specified email in Portrait format
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //check DEPENDANCIES
+  var monthEmpty = master.getRange('A3').getValue(); // month referenced in scripts
+  var yearEmpty = master.getRange('B3').getValue(); // Year referenced in scripts
+  var emailEmpty = master.getRange('C3:D3').getValue(); // email referenced in scripts
+  if (monthEmpty != ""){
+    if (yearEmpty != ""){
+      if (emailEmpty != ""){
+        //get the month we want to pull
+        var monthToPull = master.getRange("A3").getValue() +'-'+ master.getRange("B3").getValue();
+
+        //get the email to send it to
+        var emailToSendTo = master.getRange("C3").getValue();
+
+        //find the folder that contains the actual logs
+        var masterId = master.getId();
+        var masterFile = DriveApp.getFileById(masterId);
+        var masterFolder = masterFile.getParents();
+        var childFolder = masterFolder.next().getFolders().next();
+
+        //get a list of mileage logs
+        var file = childFolder.getFiles();
+
+        //var to tell us how many sheets did not exist out of the files
+        var notExist = 0;
+
+        //loop through all mileage logs
+        while (file.hasNext()) {//If there is a next file, then continue looping
+
+          //get the file id to pull data
+          var currentLog = file.next();
+          var logId = currentLog.getId();
+        
+          //check to see if the log sheet we want exists
+          var logSheets = SpreadsheetApp.openById(logId).getSheets();
+
+          //boolian var to represent if log sheet exists
+          var sheetExists = false;
+
+          for(var w = 0; w<logSheets.length; w++){
+            if(logSheets[w].getName()==monthToPull){
+              var sheetExists = true;
+              break;
+            }
+          }
+          if(sheetExists == true){
+
+            //Get data fields for email
+            var carNumber = SpreadsheetApp.openById(logId).getSheetByName(monthToPull).getRange("I4").getValue();
+            var area = SpreadsheetApp.openById(logId).getSheetByName(monthToPull).getRange("K4").getValue(); 
+            var makeModel = SpreadsheetApp.openById(logId).getSheetByName(monthToPull).getRange("C2").getValue();
+
+            //hide all sheets except the one we want
+            var sheets = SpreadsheetApp.openById(logId).getSheets();
+            for(var i =0;i<sheets.length;i++){
+              if(sheets[i].getName()!=monthToPull){
+                sheets[i].hideSheet();
+              }else{
+                sheets[i].showSheet();
+              }
+            }
+          
+            // Set the text body to attach to the email.
+            var body = "Mile logs for car # "+ carNumber +" "+ makeModel +" in area "+ area +"."; 
+
+            // Construct the Subject Line
+            var subject = "Car logs for car # "+ carNumber +" in area "+ area +" for "+ monthToPull;
+
+            // Make the pdf
+            var pdf = DriveApp.getFileById(logId).getAs('application/pdf').getBytes();
+            var attach = {fileName:'Milage Logs for Car '+ carNumber + ' in area '+ area + '.pdf',content:pdf, mimeType:'application/pdf'};
+
+            // Send the freshly constructed email 
+            MailApp.sendEmail(emailToSendTo, subject, body, {attachments:[attach]});
+          }else{
+            notExist++;
+            Logger.log("Sheet '"+monthToPull+ "' is not in file '"+currentLog.getName()+"'. NOT EMAILING A REPORT FOR THIS LOG!");
+          }
+        }
+        if(notExist>0){
+          //var ui = SpreadsheetApp.getUi();
+          //ui.alert(notExist+" files did not have the sheet "+monthToPull);
+          Logger.log(notExist+" files did not have the sheet "+monthToPull);
+        }
+        Logger.log("end of 'emailAllReportsPortrait'");
+      }else{
+        var ui = SpreadsheetApp.getUi();
+        ui.alert("Email Referenced in Scripts	('C3:D3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+      }
+    }else{
+      var ui = SpreadsheetApp.getUi();
+      ui.alert("Year referenced in scripts ('B3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+    }
+  }else{
+    var ui = SpreadsheetApp.getUi();
+    ui.alert("Month referenced in scripts ('A3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+  }
+  
+}
+
+
+function createNewCarLog(){
+  //Creates a new car log from the car number put in the specified cell, it also includes the updated information for said car in the "Master Data" sheet.
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //CHECK DEPENDANCIES
+  var monthEmpty = master.getRange('A3').getValue(); // month referenced in scripts
+  var yearEmpty = master.getRange('B3').getValue(); // Year referenced in scripts
+  var carNumberEmpty = master.getRange('E3:F3').getValue(); // Car Number referenced in scripts
+  if (monthEmpty != ""){
+    if (yearEmpty != ""){
+      if (carNumberEmpty != ""){
+        //prepare the log template to overwrite new log
+        var newLogTemplate = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Log Template");
+
+        //get the car log number so we know what new car log we are creating
+        var newCarNumber = master.getRange("E3").getValue();
+
+        //Get the car log index to find the proper car info
+        var carLogIndex = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data").getRange("F:F").getValues();
+        
+        //if the car was not found message
+        var carNotFound = "";
+
+        //Find what line of the index the right car is on.
+        for(var i=0; carLogIndex[i] != newCarNumber; i++){
+          if (i>=carLogIndex.length){
+            var carNotFound = "CAR WAS NOT IN DATABASE!";
+            break;
+          }
+        }
+        var index = (i+1);
+
+        //get all the car info to push
+        var carInfo = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data").getRange("A"+index+":"+"P"+index).getValues();
+        //Logger.log(carInfo[0][2]);
+
+        //get our designated Drivers
+        if(carInfo[0][13]){
+          var designatedDriver = carInfo[0][12] + ", " + carInfo[0][13];
+        }else{
+          var designatedDriver = carInfo[0][12];
+        }
+
+        //get the area/areas assigned to car
+        if(carInfo[0][3]){
+          var area = carInfo[0][2] + ", " + carInfo[0][3];
+        }else{
+          var area = carInfo[0][2];
+        }
+
+
+        //get the month/sheet we want to create
+        var monthToPull = master.getRange("A3").getValues() +'-'+ master.getRange("B3").getValues();
+        var logStartDate = master.getRange("A3").getValues() +'/1/'+ master.getRange("B3").getValues();
+
+        //find the folder that contains the other logs
+        var masterId = master.getId();
+        var masterFile = DriveApp.getFileById(masterId);
+        var masterFolder = masterFile.getParents();
+        var childFolder = masterFolder.next().getFolders().next();
+
+        //create log and move it to where the other logs are.
+        var newLog = SpreadsheetApp.create("Car # " + newCarNumber + " " + carInfo[0][6] + " "+ carInfo[0][7]+carNotFound, 42, 12);
+        var newLogId = newLog.getId();
+        var newLogFile = DriveApp.getFileById(newLogId);
+        newLogFile.moveTo(childFolder);
+
+        //Copy log template to the new log that was created
+        var newCarLog = SpreadsheetApp.openById(newLogId);
+        newLogTemplate.copyTo(newCarLog);
+
+        //Remove the default extra sheet that will not be used
+        var defaultSheet = newCarLog.getSheetByName("Sheet1");
+        newCarLog.deleteSheet(defaultSheet);
+
+        //Rename the template sheet to the proper name
+          newLog.getSheets()[0].setName(monthToPull);
+
+        //creates another sheet that only contains the car number
+        var carNumberSheet = SpreadsheetApp.openById(newLogId).insertSheet("Car Number");
+
+        //delete all cells except a1 on the car number sheet
+        var lastCol = carNumberSheet.getMaxColumns()-1;
+        var lastRow = carNumberSheet.getMaxRows()-2;
+        carNumberSheet.deleteColumns(2, lastCol);
+        carNumberSheet.deleteRows(2, lastRow);
+
+        //push car number to the car number sheet
+        carNumberSheet.getRange("A1").setValue(carInfo[0][5]); //car number
+        carNumberSheet.getRange("A2").setValue("DO NOT DELETE THIS SHEET"); //car number
+        carNumberSheet.hideSheet();
+        
+        //Add proper information to the new Log
+        if(carInfo[0][0]){
+        var sheetToPushTo = SpreadsheetApp.openById(newLogId).getSheetByName(monthToPull);
+        sheetToPushTo.getRange("C2").setValue(carInfo[0][6] + " "+ carInfo[0][7]); //make model
+        sheetToPushTo.getRange("H2").setValue(carInfo[0][4]); //vin
+        sheetToPushTo.getRange("K2").setValue(logStartDate); //Log Start Date
+        sheetToPushTo.getRange("I3").setValue(carInfo[0][9]); //plate Number
+        sheetToPushTo.getRange("C4").setValue(designatedDriver); //Designated Driver
+        sheetToPushTo.getRange("I4").setValue(newCarNumber); //car number
+        sheetToPushTo.getRange("K4").setValue(area); //area car is assigned
+        sheetToPushTo.getRange("E5").setValue(carInfo[0][10]); //allotted miles
+        }
+      }else{
+        var ui = SpreadsheetApp.getUi();
+        ui.alert("Car Number Referenced in scripts ('E3:F3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+      }
+    }else{
+      var ui = SpreadsheetApp.getUi();
+      ui.alert("Year referenced in scripts ('B3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+    }
+  }else{
+    var ui = SpreadsheetApp.getUi();
+    ui.alert("Month referenced in scripts ('A3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+  }
+        
+}
+
+
+function createAllNewCarLogs(){
+  //Creates a log for every car in the "Master Data" sheet.
+  // Set the Active Spreadsheet so we don't forget
+  var MasterSheet = SpreadsheetApp.getActiveSpreadsheet();
+
+  //CHECK DEPENDANCIES
+  var monthEmpty = MasterSheet.getRange('A3').getValue(); // month referenced in scripts
+  var yearEmpty = MasterSheet.getRange('B3').getValue(); // Year referenced in scripts
+  if (monthEmpty != ""){
+    if (yearEmpty != ""){
+      //set the script sheet in the active spreadsheet
+      var scriptMasterSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet");
+
+      //set the master data sheet in the active spreadsheet
+      var masterData = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Master Data");
+      
+      //prepare the log template to overwrite new log
+      var newLogTemplate = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Log Template");
+
+      //Get the car log index to find the proper car info
+      var carLogIndex = masterData.getRange("F:F").getValues();
+      
+      //get the month/sheet we want to create
+      var monthToPull = scriptMasterSheet.getRange("A3").getValues() +'-'+ scriptMasterSheet.getRange("B3").getValues();
+      var logStartDate = scriptMasterSheet.getRange("A3").getValues() +'/1/'+ scriptMasterSheet.getRange("B3").getValues();
+
+      //find the folder that contains the other logs
+      var masterId = MasterSheet.getId();
+      var masterFile = DriveApp.getFileById(masterId);
+      var masterFolder = masterFile.getParents();
+      var childFolder = masterFolder.next().getFolders().next();
+
+      //Loop through all the cars listed in the "Master Data" sheet
+      for(var i=2; carLogIndex[i]!=""; i++){
+        var index = (i+1);
+        //get all the car info to push
+        var carInfo = masterData.getRange("A"+index+":P"+index).getValues();
+        Logger.log(carInfo);
+        //get our designated Drivers
+        if(carInfo[0][13]){
+          var designatedDriver = carInfo[0][12] + ", " + carInfo[0][13];
+        }else{
+          var designatedDriver = carInfo[0][12];
+        }
+
+        //get the area/areas assigned to car
+        if(carInfo[0][3]){
+          var area = carInfo[0][2] + ", " + carInfo[0][3];
+        }else{
+          var area = carInfo[0][2];
+        }
+
+        //create log and move it to where the other logs are.
+        var newLog = SpreadsheetApp.create("Car # " + carInfo[0][5] + " " + carInfo[0][6] + " "+ carInfo[0][7], 42, 12);
+        var newLogId = newLog.getId();
+        var newLogFile = DriveApp.getFileById(newLogId);
+        newLogFile.moveTo(childFolder);
+
+        //Copy log template to the new log that was created
+        var newCarLog = SpreadsheetApp.openById(newLogId);
+        newLogTemplate.copyTo(newCarLog);
+
+        //Remove the default extra sheet that will not be used
+        var defaultSheet = newCarLog.getSheetByName("Sheet1");
+        newCarLog.deleteSheet(defaultSheet);
+
+        //Rename the template sheet to the proper name
+        newLog.getSheets()[0].setName(monthToPull);
+
+      //creates another sheet that only contains the car number
+      var carNumberSheet = SpreadsheetApp.openById(newLogId).insertSheet("Car Number");
+
+      //delete all cells except a1 on the car number sheet
+      var lastCol = carNumberSheet.getMaxColumns()-1;
+      var lastRow = carNumberSheet.getMaxRows()-2;
+      carNumberSheet.deleteColumns(2, lastCol);
+      carNumberSheet.deleteRows(2, lastRow);
+
+      //push car number to the car number sheet
+      carNumberSheet.getRange("A1").setValue(carInfo[0][5]); //car number
+      carNumberSheet.getRange("A2").setValue("DO NOT DELETE THIS SHEET"); //car number
+      carNumberSheet.hideSheet();
+      
+        //Add proper information to the new Log
+        if(carInfo[0][0]){
+        newCarLog.getSheetByName(monthToPull).getRange("C2").setValue(carInfo[0][6] + " "+ carInfo[0][7]); //make model
+        newCarLog.getSheetByName(monthToPull).getRange("H2").setValue(carInfo[0][4]); //vin
+        newCarLog.getSheetByName(monthToPull).getRange("K2").setValue(logStartDate); //Log Start Date
+        newCarLog.getSheetByName(monthToPull).getRange("I3").setValue(carInfo[0][9]); //plate Number
+        newCarLog.getSheetByName(monthToPull).getRange("C4").setValue(designatedDriver); //Designated Driver
+        newCarLog.getSheetByName(monthToPull).getRange("I4").setValue(carInfo[0][5]); //car number
+        newCarLog.getSheetByName(monthToPull).getRange("K4").setValue(area); //area car is assigned
+        newCarLog.getSheetByName(monthToPull).getRange("E5").setValue(carInfo[0][10]); //allotted miles
+        }
+      }
+    }else{
+      var ui = SpreadsheetApp.getUi();
+      ui.alert("Year referenced in scripts ('B3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+    }
+  }else{
+    var ui = SpreadsheetApp.getUi();
+    ui.alert("Month referenced in scripts ('A3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+  }
+}
+
+
+function shareWithProperAreaEmails() {
+  //reshares/shares all the logs with their specified area email
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //CHECK DEPENDANCIES
+  var monthEmpty = master.getRange('A3').getValue(); // month referenced in scripts
+  var yearEmpty = master.getRange('B3').getValue(); // Year referenced in scripts
+  if (monthEmpty != ""){
+    if (yearEmpty != ""){
+      //find the folder that contains the actual logs
+      var masterId = master.getId();
+      var masterFile = DriveApp.getFileById(masterId);
+      var masterFolder = masterFile.getParents();
+      var childFolder = masterFolder.next().getFolders().next();
+
+      //get a list of mileage logs
+      var file = childFolder.getFiles(); 
+
+      //Find the row for said car log
+      var carLogIndex = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data").getRange("F:F").getValues();
+
+      //loop through all mileage logs
+      while (file.hasNext()) {//If there is a next file, then continue looping
+
+        //get the file id to pull data
+        var currentLog = file.next();
+        var logId = currentLog.getId();
+
+        //Find Current Car log we are working with
+        var carNumber = SpreadsheetApp.openById(logId).getSheetByName("Car Number").getRange("A1").getValue();
+        
+        //tell me what car we are on
+        Logger.log("Car # " + carNumber);
+
+        //Find what line of the index the right car is on.
+        for(var i=0; carLogIndex[i] != carNumber; i++){
+            if (i>=carLogIndex.length){
+              Logger.log("Did not find the car in the list!");
+              break;
+            }
+          }
+        var index = (i+1);
+
+        //get the area emails for the specified mile log
+        var areaEmails = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data").getRange("O"+index+":P"+index).getValues();
+        
+        //get editors and owner of current log
+        var editors = currentLog.getEditors();
+        var owner = currentLog.getOwner();
+
+        //Remove all editors
+        for(var i=0; i<editors.length; i++){
+          if(editors[i]!=owner[0]){
+            currentLog.removeEditor(editors[i]);
+          }
+        }
+        
+        //add the appropriate Area emails
+        currentLog.addEditor(areaEmails[0][0]).setShareableByEditors(false);
+        if(areaEmails[0][1]){
+          currentLog.addEditor(areaEmails[0][1]).setShareableByEditors(false);
+        }
+
+      }
+      protectSheets();
+    }else{
+      var ui = SpreadsheetApp.getUi();
+      ui.alert("Year referenced in scripts ('B3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+    }
+  }else{
+    var ui = SpreadsheetApp.getUi();
+    ui.alert("Month referenced in scripts ('A3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+  }
+}
+
+
+function shareSingleLogWithProperAreaEmails() {
+  //reshares/shares a specified log with its associated area email.
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  var monthEmpty = master.getRange('A3').getValue(); // month referenced in scripts
+  var yearEmpty = master.getRange('B3').getValue(); // Year referenced in scripts
+  var carNumberEmpty = master.getRange('E3:F3').getValue(); // Car Number referenced in scripts
+  if (monthEmpty != ""){
+    if (yearEmpty != ""){
+      if (carNumberEmpty != ""){
+        //get the car we are sharing
+        var carToShare = master.getRange("E3").getValue();
+
+        //make sure we don't waste our time
+        if(carToShare!=""){
+
+          //find the folder that contains the actual logs
+          var masterId = master.getId();
+          var masterFile = DriveApp.getFileById(masterId);
+          var masterFolder = masterFile.getParents();
+          var childFolder = masterFolder.next().getFolders().next();
+
+          //get a list of mileage logs
+          var file = childFolder.getFiles(); 
+
+          //Find the row for said car log
+          var carLogIndex = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data").getRange("F:F").getValues();
+
+          //loop through all mileage logs
+          while (file.hasNext()) {//If there is a next file, then continue looping
+
+            //get the file id to pull data
+            var currentLog = file.next();
+            var logId = currentLog.getId();
+
+            //Find Current Car log we are working with
+            var carNumber = SpreadsheetApp.openById(logId).getSheetByName("Car Number").getRange("A1").getValue();
+          
+            //tell me what car we are currently looking at
+            Logger.log("Car # " + carNumber);
+
+            if(carNumber == carToShare){
+              //Find what line of the index the right car is on.
+            for(var i=0; carLogIndex[i] != carNumber; i++){
+              if (i>=carLogIndex.length){
+                Logger.log("The car was not found in the index!")
+                break;
+                }
+              }
+              var index = (i+1);
+
+              //get the area emails for the specified mile log
+              var areaEmails = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data").getRange("O"+index+":P"+index).getValues();
+          
+              //get editors and owner of current log
+              var editors = currentLog.getEditors();
+              var owner = currentLog.getOwner();
+
+              //Remove all editors
+              for(var i=0; i<editors.length; i++){
+                if(editors[i]!=owner[0]){
+                  currentLog.removeEditor(editors[i]);
+                }
+              }
+
+              //add the appropriate Area emails
+              currentLog.addEditor(areaEmails[0][0]).setShareableByEditors(false);
+              if(areaEmails[0][1]){
+                currentLog.addEditor(areaEmails[0][1]).setShareableByEditors(false);
+              }
+              
+              //after the specified car is found, stop keep looking for it.
+              break;
+            }
+          }
+          protectSingleSpreadsheet();
+        }
+      }else{
+        var ui = SpreadsheetApp.getUi();
+        ui.alert("Car Number Referenced in scripts ('E3:F3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+      }
+    }else{
+      var ui = SpreadsheetApp.getUi();
+      ui.alert("Year referenced in scripts ('B3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+    }
+  }else{
+    var ui = SpreadsheetApp.getUi();
+    ui.alert("Month referenced in scripts ('A3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+  }
+}
+
+
+function unshareAllRepoprts() {
+  //Removes all area email access to all logs. For repairs or emergency only.
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //find the folder that contains the actual logs
+  var masterId = master.getId();
+  var masterFile = DriveApp.getFileById(masterId);
+  var masterFolder = masterFile.getParents();
+  var childFolder = masterFolder.next().getFolders().next();
+
+  //get a list of mileage logs
+  var file = childFolder.getFiles(); 
+
+  //loop through all mileage logs
+  while (file.hasNext()) {//If there is a next file, then continue looping
+
+    //get the file id to pull data
+    var currentLog = file.next();
+
+    //get editors and owner of current log
+    var editors = currentLog.getEditors();
+
+    //Remove all editors
+    for(var i=0; i<editors.length; i++){
+      currentLog.removeEditor(editors[i]);
+    }
+  }
+}
+
+
+function replaceCellWith() {
+  //similar to a find and replace but for all the carlogs/sheets
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //CHECK DEPENDANCIES
+  var monthEmpty = master.getRange('A3').getValue(); // month referenced in scripts
+  var yearEmpty = master.getRange('B3').getValue(); // Year referenced in scripts
+  var replaceEmpty = master.getRange('F22').getValue(); // find and replace "Text to put in cell"
+  var findEmpty = master.getRange('G22').getValue(); // find and replace "Cell to Find"
+  if (monthEmpty != ""){
+    if (yearEmpty != ""){
+      if (replaceEmpty != ""){
+        if (findEmpty != ""){
+          //get the month/sheet we want to interact with
+          var monthToPull = master.getRange("A3").getValues() +'-'+ master.getRange("B3").getValues();
+
+          //get the cell to replace
+          var newCellLocation = master.getRange("F22").getValue();
+
+          //get the data that we will be pushing to the cell
+          var newCellData = master.getRange("G22").getValue();
+
+          //find the folder that contains the actual logs
+          var masterId = master.getId();
+          var masterFile = DriveApp.getFileById(masterId);
+          var masterFolder = masterFile.getParents();
+          var childFolder = masterFolder.next().getFolders().next();
+
+          //get a list of mileage logs
+          var file = childFolder.getFiles(); 
+
+          //loop through all mileage logs
+          while (file.hasNext()) {//If there is a next file, then continue looping
+          
+            //get the file id to pull data
+            var currentLog = file.next();
+            var logId = currentLog.getId();
+          
+            //check to see if the log sheet we want exists
+            var logSheets = SpreadsheetApp.openById(logId).getSheets();
+
+            //boolian var to represent if log sheet exists
+            var sheetExists = false;
+
+            for(var w = 0; w<logSheets.length; w++){
+              if(logSheets[w]==monthToPull){
+                var sheetExists = true;
+                break;
+              }
+            }
+            if(sheetExists == true){
+            //push the data
+            SpreadsheetApp.openById(logId).getSheetByName(monthToPull).getRange(newCellLocation).setValue(newCellData);
+            }
+          }
+        }else{ 
+          var ui = SpreadsheetApp.getUi();
+          ui.alert("Cell to Find ('G22') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+        }
+      }else{
+        var ui = SpreadsheetApp.getUi();
+        ui.alert("Text to put in cell ('F22') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+      }
+    }else{
+      var ui = SpreadsheetApp.getUi();
+      ui.alert("Year referenced in scripts ('B3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+    }
+  }else{
+    var ui = SpreadsheetApp.getUi();
+    ui.alert("Month referenced in scripts ('A3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+  }
+}
+
+
+function testForErrors (){
+  //tests logs for common errors that may cause the other scripts to fail
+  //gets the master spreadsheet object
+  var masterSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+
+  //CHECK DEPENDANCIES
+  var monthEmpty = master.getRange('A3').getValue(); // month referenced in scripts
+  var yearEmpty = master.getRange('B3').getValue(); // Year referenced in scripts
+  if (monthEmpty != ""){
+    if (yearEmpty != ""){
+      //declares the UI as a variable to tell errors
+      var ui = SpreadsheetApp.getUi();
+      //ui.alert();
+
+      //gets the Script Master Sheet object as a variable
+      try {
+        var scriptMasterSheet = masterSpreadsheet.getSheetByName("Script Master Sheet");
+        scriptMasterSheet.getName();
+      }
+      catch(err) {
+        ui.alert("The 'Script Master Sheet' was not found - this is a problem... check file history to restore/recreate it.");
+        var scriptMasterSheet = "";
+      } 
+
+      //gets the "Master Data" sheet object as a variable
+      try {
+        var masterDataSheet = masterSpreadsheet.getSheetByName("Master Data");
+        masterDataSheet.getName();
+      }
+      catch(err) {
+        ui.alert("The 'Master Data' sheet was not found - this is a problem... check file history to restore/recreate it.");
+        var masterDataSheet = "";
+      } 
+
+      //gets the "Current Report" sheet object as a variable
+      try {
+        var currentReportSheet = masterSpreadsheet.getSheetByName("Current Report");
+        currentReportSheet.getName();
+      }
+      catch(err) {
+        ui.alert("The 'Current Report' sheet was not found - this is a problem... no biggie just restore it via file history");
+        var currentReportSheet = "";
+      } 
+
+      //gets the "Log Template" sheet object as a variable
+      try {
+        var logTemplateSheet = masterSpreadsheet.getSheetByName("Log Template");
+        logTemplateSheet.getName();
+      }
+      catch(err) {
+        ui.alert("The 'Log Template' sheet was not found - this is a problem... this sheet is used to create new car logs or create the next month's car log. if this sheet is corrupted or missing you are in trouble. Restore this template via file history.");
+        var logTemplateSheet = "";
+      } 
+
+      //gets the "List of all area emails" sheet object as a variable
+      try {
+        var listofallareaemailsSheet = masterSpreadsheet.getSheetByName("List of all area emails");
+        listofallareaemailsSheet.getName();
+      }
+      catch(err) {
+        ui.alert("The 'List of all area emails' sheet was not found - this is a problem if 'Master Data' does not contain the area emails you are sharing with directly inputted if this is the case just make a sheet called 'List of all area emails' then you get no more error :) if this is not the case restore it via file history.");
+        var listofallareaemailsSheet = "";
+      }
+
+      //will not continue checking for other problems until the current spreadsheet is fixed
+      if(scriptMasterSheet =="" || masterDataSheet =="" || currentReportSheet =="" || logTemplateSheet =="" || listofallareaemailsSheet ==""){
+        ui.alert("The script will not continue checking for other problems until the current spreadsheet is fixed!");
+      }else{
+
+      //let's check and make sure all the files have a "Car Number" sheet 
+        //find the folder that contains the actual logs
+        var masterId = masterSpreadsheet.getId();
+        var masterFile = DriveApp.getFileById(masterId);
+        var masterFolder = masterFile.getParents();
+        var childFolder = masterFolder.next().getFolders().next();
+
+        //get a list of mileage logs
+        var file = childFolder.getFiles();
+
+        //loop through all mileage logs
+        while (file.hasNext()) {//If there is a next file, then continue looping
+
+          //get the file id to pull data
+          var currentLog = file.next();
+          var logId = currentLog.getId();
+
+          //let's check and make sure all the files have a "Car Number" sheet 
+          try {
+            var carNumberSheet = SpreadsheetApp.openById(logId).getSheetByName("Car Number");
+            Logger.log("Test if 'Car Number' exists in " + currentLog.getName());
+            carNumberSheet.getName();
+          }
+          catch(err) {
+            ui.alert("The 'Car Number' sheet was not found in log '"+currentLog.getName()+"', it contains two cells, A1 contains the car number, A2 contains a warning telling editors not to delete the sheet, There are no other cells besides those two. This sheet is referenced across almost all scripts, so if you are getting an error this is probably why. To fix this problem open log '" +currentLog.getName()+"' and add a sheet named 'Car Number'. Make the value of A1 the car number(for example '5'). Make the value of cell A2 'DO NOT DELETE THIS SHEET'. Delete all other columns and rows except those containing A1 or A2. If this is an older log remove it out of the working directory for the car logs. Create a new folder for these, just move them elsewhere idk.");
+            var currentReportSheet = "";
+          }
+        }
+      }
+    }else{
+      var ui = SpreadsheetApp.getUi();
+      ui.alert("Year referenced in scripts ('B3') is empty!\nThis may be the problem!\nMake sure to hit enter or exit the cell before you start a script!");
+    }
+  }else{
+    var ui = SpreadsheetApp.getUi();
+    ui.alert("Month referenced in scripts ('A3') is empty!\nThis may be the problem!\nMake sure to hit enter or exit the cell before you start a script!");
+  }
+
+  
+}
+
+
+function switchCars () {
+  var lock = LockService.getScriptLock();
+  lock.tryLock(1000);
+  //Switches cars and their assosiated car information then pushes that data shares it and protects it
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //CHECK DEPENDANCIES
+  var monthEmpty = master.getRange('A3').getValue(); // month referenced in scripts
+  var yearEmpty = master.getRange('B3').getValue(); // Year referenced in scripts
+  if (monthEmpty != ""){
+    if (yearEmpty != ""){
+      //get the cars we will be switching
+      var carOne = master.getRange("F33").getValue();
+      var carTwo = master.getRange("G33").getValue();
+
+      //declare master data
+      var masterData = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data");
+
+      //Get the car log index to find info
+      var carLogIndex = master.getSheetByName("Master Data").getRange("F:F").getValues();
+      
+      //boolian to represent if the car was found
+      var carOneFound = true;
+
+      //Find what line of the index of car 1 is on
+      for(var i=0; carLogIndex[i] != carOne; i++){
+        if (i>=carLogIndex.length){
+          var carOneFound = false;
+          break;
+        }
+      }
+      var carOneLine = (i+1);
+
+      //get the data for car 1
+      var carOneData = masterData.getRange("A"+carOneLine+":P"+carOneLine).getValues();
+
+      //Find what line of the index of car 2 is on
+      for(var i=0; carLogIndex[i] != carTwo; i++){
+        if (i>=carLogIndex.length){
+          var carOneFound = false;
+          break;
+        }
+      }
+      var carTwoLine = (i+1);
+
+      //get the data for car 2
+      var carTwoData = master.getSheetByName("Master Data").getRange("A"+carTwoLine+":P"+carTwoLine).getValues();
+
+      Logger.log(carOneData);
+      Logger.log(carTwoData);
+
+      //move the data from one to the other - 'car 1 old' to 'car 1 new' (car 2 old)
+      masterData.getRange("A"+carTwoLine).setValue(carOneData[0][0]);//zone
+      masterData.getRange("B"+carTwoLine).setValue(carOneData[0][1]);//district
+      masterData.getRange("C"+carTwoLine).setValue(carOneData[0][2]);//area
+      masterData.getRange("D"+carTwoLine).setValue(carOneData[0][3]);//area 2
+      masterData.getRange("K"+carTwoLine).setValue(carOneData[0][10]); //mile allotment
+      masterData.getRange("M"+carTwoLine).setValue(carOneData[0][12]);//desinated driver 1
+      masterData.getRange("N"+carTwoLine).setValue(carOneData[0][13]); //designated driver 2
+      
+      //move the data from one to the other - 'car 2 old' to 'car 2 new' (car 1 old)
+      masterData.getRange("A"+carOneLine).setValue(carTwoData[0][0]);//zone
+      masterData.getRange("B"+carOneLine).setValue(carTwoData[0][1]);//district
+      masterData.getRange("C"+carOneLine).setValue(carTwoData[0][2]);//area
+      masterData.getRange("D"+carOneLine).setValue(carTwoData[0][3]);//area 2
+      masterData.getRange("K"+carOneLine).setValue(carTwoData[0][10]); //mile allotment
+      masterData.getRange("M"+carOneLine).setValue(carTwoData[0][12]);//desinated driver 1
+      masterData.getRange("N"+carOneLine).setValue(carTwoData[0][13]); //designated driver 2
+      
+
+      //push the data, share the car log, and protect the car log
+      //for Car one
+      master.getSheetByName("Script Master Sheet").getRange("E3").setValue(carOne);
+      pushDataForSingleLog();
+      shareSingleLogWithProperAreaEmails();
+
+      //for Car Two
+      master.getSheetByName("Script Master Sheet").getRange("E3").setValue(carTwo);
+      pushDataForSingleLog();
+      shareSingleLogWithProperAreaEmails();
+      
+      lock.releaseLock();
+    }else{
+      var ui = SpreadsheetApp.getUi();
+      ui.alert("Year referenced in scripts ('B3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+    }
+  }else{
+    var ui = SpreadsheetApp.getUi();
+    ui.alert("Month referenced in scripts ('A3') is empty!\nMake sure to hit enter or exit the cell before you start a script!");
+  }
+
+  
+}
+
+
+
+
+// Service Functions
+function protectSheets() {
+  //protects all the sheets from editing except those that are incomplete. Run after running either shareWithProperAreaEmails or shareSingleLogWithProperAreaEmails
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //get the month we want to pull
+  var monthToPull = master.getRange("A3").getValues() +'-'+ master.getRange("B3").getValues();
+
+  //find the folder that contains the actual logs
+  var masterId = master.getId();
+  var masterFile = DriveApp.getFileById(masterId);
+  var masterFolder = masterFile.getParents();
+  var childFolder = masterFolder.next().getFolders().next();
+
+  //get a list of mileage logs
+  var file = childFolder.getFiles(); 
+
+  //loop through all mileage logs
+  while (file.hasNext()) {//If there is a next file, then continue looping
+  
+    //get the file id to pull data
+    var currentLog = file.next();
+    var logId = currentLog.getId();
+    
+    Logger.log("");
+    Logger.log(currentLog.getName());
+
+    //get editors and owner of current log
+    var editors = currentLog.getEditors();
+    var owner = currentLog.getOwner().getEmail();
+
+    //get the sheets for the current log
+    var sheets = SpreadsheetApp.openById(logId).getSheets();
+
+    //get current log in spreadsheet app
+    var spreadsheetCurrent = SpreadsheetApp.openById(logId);
+
+    //remove all protections to not create confusion
+    var protections = spreadsheetCurrent.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+    try{
+      for (var w = 0; w < protections.length; w++) {
+        var protection = protections[w];
+        if (protection.canEdit()) {
+          protection.remove();
+        }
+      }
+    }
+    catch(err){
+      //Logger.log("no full sheet protections");
+    }
+    try{
+      var protections = spreadsheetCurrent.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+      
+      for (var t = 0; t < protections.length; t++) {
+        var protection = protections[t];
+        if (protection.canEdit()) {
+          protection.remove();
+        }
+      }
+    }
+    catch(err){
+      //Logger.log("no range protections");
+    }
+    
+    //unhide all sheets
+    for(var i =0;i<sheets.length;i++){
+      sheets[i].showSheet();
+    }
+
+    //loop through all the sheets to apply protections and hide unused ones
+    for(var i =0;i<sheets.length;i++){
+      
+      //make sure we are not checking "Car Number"
+      if(sheets[i].getName() == "Car Number"){
+        
+        Logger.log("The current sheet is 'Car Number'");
+        //protect Car Number sheet
+        var protectedSheetCarNumberSheet = sheets[i].protect();
+
+        //disallow all editors to edit Car Number sheet
+        for(var w=0; w<editors.length; w++){
+          if(editors[w]!=owner){
+            protectedSheetCarNumberSheet.removeEditor(editors[w]);
+          }
+        }
+
+        var endodometer = "filler";
+        
+      }else{ 
+        if(sheets[i].getName() == monthToPull){
+          
+          Logger.log("The current log is '"+monthToPull+"'");
+
+          //protect the mile allotment cell in the sheet
+          var protectedSheetmonthtopull = sheets[i].getRange("E5:E6").protect();
+          var protectedScriptThings = sheets[i].getRange("C7:E37").protect();
+
+          //disallow all editors to edit in that cell
+          for(var w=0; w<editors.length; w++){
+            if(editors[w]!=owner){
+              protectedSheetmonthtopull.removeEditor(editors[w]);
+              protectedScriptThings.removeEditor(editors[w]);
+            }
+          }
+        }else{
+          
+          Logger.log("The current sheet is a previous month");
+          //get the odometer for the current sheet
+          var endodometer = SpreadsheetApp.openById(logId).getSheetByName(sheets[i].getName()).getRange("A39").getValue();
+      
+          //If the sheet is not completed allow editing
+          if(endodometer == ""){
+            Logger.log("The previous months sheet '"+sheets[i].getName()+"' is not complete - only protecting the mileage allotment");
+            //protect the mile allotment cell in the sheet
+            var protectedSheetOtherMonth = sheets[i].getRange("E5:E6").protect();
+      
+            //disallow all editors to edit in that cell
+            for(var w=0; w<editors.length; w++){
+              if(editors[w]!=owner){
+                protectedSheetOtherMonth.removeEditor(editors[w]);
+              }
+            }
+          }else{
+            Logger.log("The previous months sheet '"+sheets[i].getName()+"' is complete - protecting entire sheet");
+            //the sheet for a different month is complete - disallow editing
+            //protect completed previous months sheet
+            var protectedSheetCarNumberSheet = sheets[i].protect();
+
+            //disallow all editors to edit completed previous months sheet
+            for(var w=0; w<editors.length; w++){
+              if(editors[w]!=owner){
+                protectedSheetCarNumberSheet.removeEditor(editors[w]);
+              }
+            }
+          }
+        }
+      }
+      //hide all sheets except the one we want
+      if(sheets[i].getName()!=monthToPull && endodometer != ""){
+        sheets[i].hideSheet();
+      }else{
+        sheets[i].showSheet();
+      }
+    }
+  
+  }
+  
+  
+}
+
+
+function protectSingleSpreadsheet() {
+  //protects all the sheets from editing except those that are incomplete. Run after running either shareWithProperAreaEmails or shareSingleLogWithProperAreaEmails
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //get the month we want to pull
+  var monthToPull = master.getRange("A3").getValues() +'-'+ master.getRange("B3").getValues();
+
+  //get the car log we want to protect
+  var carLogToProtect = master.getRange("E3").getValue();
+  //var currentCarLogNumber = SpreadsheetApp.openById(logId).getSheetByName("Car Number").getRange("A1").getValue(); //car number
+
+  //find the folder that contains the actual logs
+  var masterId = master.getId();
+  var masterFile = DriveApp.getFileById(masterId);
+  var masterFolder = masterFile.getParents();
+  var childFolder = masterFolder.next().getFolders().next();
+
+  //get a list of mileage logs
+  var file = childFolder.getFiles(); 
+
+  //loop through all mileage logs
+  while (file.hasNext()) {//If there is a next file, then continue looping
+  
+    //get the file id to pull data
+    var currentLog = file.next();
+    var logId = currentLog.getId();
+    
+    //get the current car log number
+    var currentCarLogNumber = SpreadsheetApp.openById(logId).getSheetByName("Car Number").getRange("A1").getValue(); //car number
+
+    //if car log is not the one we are looking for we skip it
+    if(carLogToProtect == currentCarLogNumber){
+
+      Logger.log("");
+      Logger.log(currentLog.getName());
+
+      //get editors and owner of current log
+      var editors = currentLog.getEditors();
+      var owner = currentLog.getOwner().getEmail();
+
+      //get the sheets for the current log
+      var sheets = SpreadsheetApp.openById(logId).getSheets();
+
+      //get current log in spreadsheet app
+      var spreadsheetCurrent = SpreadsheetApp.openById(logId);
+
+      //remove all protections to not create confusion
+      var protections = spreadsheetCurrent.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+      try{
+        for (var w = 0; w < protections.length; w++) {
+          var protection = protections[w];
+          if (protection.canEdit()) {
+            protection.remove();
+          }
+        }
+      }
+      catch(err){
+        //Logger.log("no full sheet protections");
+      }
+      try{
+        var protections = spreadsheetCurrent.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+      
+        for (var t = 0; t < protections.length; t++) {
+          var protection = protections[t];
+          if (protection.canEdit()) {
+            protection.remove();
+          }
+        }
+      }
+      catch(err){
+        //Logger.log("no range protections");
+      }
+
+      //unhide all sheets
+      for(var i =0;i<sheets.length;i++){
+      sheets[i].showSheet();
+      }
+
+      //loop through all the sheets to apply protections and hide unused ones
+      for(var i =0;i<sheets.length;i++){
+        
+        //unhide all sheets
+        sheets[i].showSheet();
+        
+        //make sure we are not checking "Car Number"
+        if(sheets[i].getName() == "Car Number"){
+        
+          Logger.log("The current sheet is 'Car Number'");
+          //protect Car Number sheet
+          var protectedSheetCarNumberSheet = sheets[i].protect();
+
+          //disallow all editors to edit Car Number sheet
+          for(var w=0; w<editors.length; w++){
+            if(editors[w]!=owner){
+              protectedSheetCarNumberSheet.removeEditor(editors[w]);
+            }
+          }
+
+          var endodometer = "filler";
+        
+        }else{ 
+          if(sheets[i].getName() == monthToPull){
+          
+            Logger.log("The current log is '"+monthToPull+"'");
+
+            //protect the mile allotment cell in the sheet
+            var protectedSheetmonthtopull = sheets[i].getRange("E5:E6").protect();
+            var protectedScriptThings = sheets[i].getRange("C7:E37").protect();
+            //disallow all editors to edit in that cell
+            for(var w=0; w<editors.length; w++){
+              if(editors[w]!=owner){
+                protectedSheetmonthtopull.removeEditor(editors[w]);
+                protectedScriptThings.removeEditor(editors[w]);
+              }
+            }
+          }else{
+          
+            Logger.log("The current sheet is a previous month");
+            //get the odometer for the current sheet
+            var endodometer = SpreadsheetApp.openById(logId).getSheetByName(sheets[i].getName()).getRange("A39").getValue();
+      
+            //If the sheet is not completed allow editing
+            if(endodometer == ""){
+              Logger.log("The previous months sheet '"+sheets[i].getName()+"' is not complete - only protecting the mileage allotment");
+              //protect the mile allotment cell in the sheet
+              var protectedSheetOtherMonth = sheets[i].getRange("E5:E6").protect();
+      
+              //disallow all editors to edit in that cell
+              for(var w=0; w<editors.length; w++){
+                if(editors[w]!=owner){
+                  protectedSheetOtherMonth.removeEditor(editors[w]);
+                }
+              }
+            }else{
+              Logger.log("The previous months sheet '"+sheets[i].getName()+"' is complete - protecting entire sheet");
+              //the sheet for a different month is complete - disallow editing
+              //protect completed previous months sheet
+              var protectedSheetCarNumberSheet = sheets[i].protect();
+
+              //disallow all editors to edit completed previous months sheet
+              for(var w=0; w<editors.length; w++){
+                if(editors[w]!=owner){
+                  protectedSheetCarNumberSheet.removeEditor(editors[w]);
+                }
+              }
+            }
+          }
+        
+      
+        }
+        //hide all sheets except the one we want
+        if(sheets[i].getName()!=monthToPull && endodometer != ""){
+          sheets[i].hideSheet();
+        }else{
+          sheets[i].showSheet();
+        }
+      }
+      Logger.log("Done!")
+      break;
+    }else{
+      Logger.log("Car # "+currentCarLogNumber+ " is not "+carLogToProtect+" - Skipping...")
+    }
+  }
+  
+  
+}
+
+
+function createNextMonth() {
+  //creates the next month's sheet in every car log, also pushes the most updated information assosiated with that log.
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //declare the ui for errors
+  //var ui = SpreadsheetApp.getUi(); //we don't need it because this is a scheduled task
+
+  //prepare the log template to overwrite new log
+  var newLogTemplate = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Log Template");
+
+  //get the month we want to pull
+  var monthToPull = master.getRange("A3").getValues() +'-'+ master.getRange("B3").getValues();
+  
+  //get the start date for this log
+  var startDate = master.getRange("A3").getValues() +'/1/'+ master.getRange("B3").getValues();
+  
+  //Get the car log index to find info
+  var carLogIndex = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data").getRange("F:F").getValues();
+  
+  //find the folder that contains the actual logs
+  var masterId = master.getId();
+  var masterFile = DriveApp.getFileById(masterId);
+  var masterFolder = masterFile.getParents();
+  var childFolder = masterFolder.next().getFolders().next();
+
+  //get a list of mileage logs
+  var file = childFolder.getFiles();
+
+  //loop through all mileage logs
+  while (file.hasNext()) {//If there is a next file, then continue looping
+
+    //get the file id to pull data
+    var currentLog = file.next();
+    var logId = currentLog.getId();
+
+    //let's get the car number of the current log
+    var carNumber = SpreadsheetApp.openById(logId).getSheetByName("Car Number").getRange("A1").getValue();
+
+    //tell me what log we are on
+    //Logger.log(currentLog.getName());
+
+    //get the sheets for the current log
+    var sheets = SpreadsheetApp.openById(logId).getSheets();
+
+    //true or false variable if the sheet is already made
+    var sheetAlreadyMade = false; 
+    
+    //loop through all the sheets to check if the sheet we are creating is already made.
+    for(var i =0;i<sheets.length;i++){
+        if (sheets[i].getName()==monthToPull){
+          sheetAlreadyMade = true;
+        }
+    }
+    
+    //if the sheet is not made already, let's make it
+    if(sheetAlreadyMade == false){
+    
+    //Copy log template to the new sheet that was also created - do not get rid of SpreadsheetApp.openById(logId)
+    newLogTemplate.copyTo(SpreadsheetApp.openById(logId));
+    
+    //rename new sheet to reflect the specified month
+    SpreadsheetApp.openById(logId).getSheetByName("Copy of Log Template").setName(monthToPull);
+    }
+
+    //the sheet name reflected in monthtoPull should be created now.
+
+    //boolian representing whether or not the car was found in "Master Data"
+    var carFound = true;
+
+    //Find what line of the index of "Master Data" the right car is on.
+    for(var i=0; carLogIndex[i] != carNumber; i++){
+        if (i>=carLogIndex.length){
+          var carFound = false;
+          break;
+        }
+      }
+    var index = (i+1);
+
+
+    if(carFound == true){
+      //get all the car info to push
+      var carInfo = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data").getRange("A"+index+":P"+index).getValues();
+
+      //check if there is more than one designated driver
+      if(carInfo[0][13]){
+        var driver = carInfo[0][12] + ", " + carInfo[0][13];
+      }else{
+        var driver = carInfo[0][12];
+      }
+
+      //check if there is more than one area
+      if(carInfo[0][13]){
+        var area = carInfo[0][2] + ", " + carInfo[0][3];
+      }else{
+        var area = carInfo[0][2];
+      }
+
+      //Write to the Current Car Log with the newly Updated Information
+      var sheetToWriteTo = SpreadsheetApp.openById(logId).getSheetByName(monthToPull);
+      sheetToWriteTo.getRange("C2").setValue(carInfo[0][6] +" "+ carInfo[0][7]); //makeModel
+      sheetToWriteTo.getRange("C4").setValue(driver); //driver
+      sheetToWriteTo.getRange("E5").setValue(carInfo[0][10]); //Allotted Miles
+      sheetToWriteTo.getRange("H2").setValue(carInfo[0][4]); //vin
+      sheetToWriteTo.getRange("I3").setValue(carInfo[0][9]); //licensePlate
+      sheetToWriteTo.getRange("K2").setValue(startDate); //startDate
+      sheetToWriteTo.getRange("K4").setValue(area); //area
+      sheetToWriteTo.getRange("I4").setValue(carNumber); //Car Number
+    }else{
+      Logger.log("Car # " + carNumber + " was not found in 'Master Data', the sheet "+ monthToPull+ " was created, but is empty. Running 'Push Data' will push the proper information to this car log, so long as the data exists in 'Master Data'.");
+      
+      //ui.alert("Car # " + carNumber + " was not found in 'Master Data', the sheet "+ monthToPull+ " was created, but is empty. Running 'Push Data' will push the proper information to this car log, so long as the data exists in 'Master Data'.");
+    }
+  }
+  
+}
+
+
+function unprotectAllSheets() {
+  //protects all the sheets from editing except those that are incomplete. Run after running either shareWithProperAreaEmails or shareSingleLogWithProperAreaEmails
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //find the folder that contains the actual logs
+  var masterId = master.getId();
+  var masterFile = DriveApp.getFileById(masterId);
+  var masterFolder = masterFile.getParents();
+  var childFolder = masterFolder.next().getFolders().next();
+
+  //get a list of mileage logs
+  var file = childFolder.getFiles(); 
+
+  //loop through all mileage logs
+  while (file.hasNext()) {//If there is a next file, then continue looping
+  
+    //get the file id to pull data
+    var currentLog = file.next();
+    var logId = currentLog.getId();
+    
+    Logger.log(currentLog.getName());
+
+    //get the sheets for the current log
+    var sheets = SpreadsheetApp.openById(logId);
+
+    //remove all protections to not create confusion
+    var protections = sheets.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+    try{
+      for (var u = 0; u < protections.length; u++) {
+        var protection = protections[u];
+        if (protection.canEdit()) {
+          protection.remove();
+        }
+      }
+    }
+    catch(err){
+      Logger.log("no full sheet protections");
+    }
+    try{
+      var protections = sheets.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+      
+      for (var t = 0; t < protections.length; t++) {
+        var protection = protections[t];
+        if (protection.canEdit()) {
+          protection.remove();
+        }
+      }
+    }
+    catch(err){
+      Logger.log("no range protections");
+    }
+    
+
+  }
+}
+
+
+function incompleteMileageLogsEmail () {
+  //Emails all the area emails telling them to complete the mileage logs if they are incomplete (for past due mileage logs)
+
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+  
+  //get the month/sheet we want to interact with
+  var monthToPull = master.getRange("A3").getValues() +'-'+ master.getRange("B3").getValues();
+
+  //get the email for the Vehicle report to be sent to
+  var emailToSendTo = master.getRange("C3").getValue();
+
+  //declare master data
+  var masterData = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data");
+
+  //Get the car log index to find info
+  var carLogIndex = masterData.getRange("F:F").getValues();
+  
+  //Get the are email index
+  var areaEmailIndex = masterData.getRange("O:P").getValues();
+
+  //find the folder that contains the actual logs
+  var masterId = master.getId();
+  var masterFile = DriveApp.getFileById(masterId);
+  var masterFolder = masterFile.getParents();
+  var childFolder = masterFolder.next().getFolders().next();
+
+  //get a list of mileage logs
+  var file = childFolder.getFiles(); 
+
+  //loop through all mileage logs
+  while (file.hasNext()) {//If there is a next file, then continue looping
+  
+    //get the file id to pull data
+    var currentLog = file.next();
+    var logId = currentLog.getId();
+    
+    Logger.log(currentLog.getName());
+
+    //check to see if the log sheet we want exists
+    var logSheets = SpreadsheetApp.openById(logId).getSheets();
+
+    //boolian var to represent if log sheet exists
+    var sheetExists = false;
+
+    //loop through all sheets to make sure MonthToPull exists in the log
+    for(var w = 0; w<logSheets.length; w++){
+      if(logSheets[w].getName()==monthToPull){
+        var sheetExists = true;
+        break;
+      }
+    }
+    
+    //let's do stuff if it exists
+    if(sheetExists == true){
+    
+      //check if the sheet is complete (whether or not we need to email them)
+      var endOdimeter = SpreadsheetApp.openById(logId).getSheetByName(monthToPull).getRange("A39").getValue();
+
+      //if the sheet isn't complete send an email
+      if(endOdimeter == ""){
+        //Find Current Car log we are working with
+        var carNumber = SpreadsheetApp.openById(logId).getSheetByName("Car Number").getRange("A1").getValue();
+
+        //find that car log in the master data index
+        for(var e=0; carLogIndex[e] != carNumber; e++){
+          if (e>=carLogIndex.length){
+            Logger.log("The car wasn't found in the index... check master data");
+            break;
+          }
+        }
+        var currentCarInfoLine = e;
+
+        //Logger.log(areaEmailIndex[currentCarInfoLine][0]);
+        // Set the text body to attach to the email.
+        var body = "Your mileage log '"+ currentLog.getName()+"' is incomplete. "+"Please finish filling sheet '"+ monthToPull +"' in! "+ currentLog.getUrl(); 
+
+        // Construct the Subject Line
+        var subject = "Finish Your OVERDUE Car Log!";
+
+        //Time to send them an email
+        MailApp.sendEmail(areaEmailIndex[currentCarInfoLine][0], subject, body);
+
+        //see if the car is shared
+        if(areaEmailIndex[currentCarInfoLine][1]!=""){
+          MailApp.sendEmail(areaEmailIndex[currentCarInfoLine][1], subject, body);
+        }
+        
+        //create a report to send to Vehicle cordinator
+        var fleetReport = [fleetReport, currentLog.getName()+"'s - '"+monthToPull+"' is INCOMPLETE - Status: Email Sent."];
+        
+      }else{
+        Logger.log("The mileage log '" +currentLog.getName()+"' is complete!");
+      }
+    }else{
+      Logger.log("Sheet '"+monthToPull+"' does not exist in '"+currentLog.getName()+"'!")
+    }
+  }
+  MailApp.sendEmail(emailToSendTo, "Driver Logs that are incomplete", fleetReport.toString().replaceAll(',', '\n'));
+}
+
+
+function finishMileageLogsReminderEmail () {
+  //Emails all the area emails telling them to complete the mileage logs if they are incomplete on the 1st of the month
+
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+  
+  //get the month/sheet we want to interact with
+  var monthToPull = master.getRange("A3").getValues() +'-'+ master.getRange("B3").getValues();
+
+  //get the email to send the report to
+  var emailToSendTo = master.getRange("C3:D3").getValue();
+
+  //declare master data
+  var masterData = SpreadsheetApp.openById(master.getId()).getSheetByName("Master Data");
+
+  //Get the car log index to find info
+  var carLogIndex = masterData.getRange("F:F").getValues();
+  
+  //Get the are email index
+  var areaEmailIndex = masterData.getRange("O:P").getValues();
+
+  //find the folder that contains the actual logs
+  var masterId = master.getId();
+  var masterFile = DriveApp.getFileById(masterId);
+  var masterFolder = masterFile.getParents();
+  var childFolder = masterFolder.next().getFolders().next();
+
+  //get a list of mileage logs
+  var file = childFolder.getFiles(); 
+
+  //var for report at the end
+  var fleetReport = "";
+
+  //loop through all mileage logs
+  while (file.hasNext()) {//If there is a next file, then continue looping
+  
+    //get the file id to pull data
+    var currentLog = file.next();
+    var logId = currentLog.getId();
+    
+    Logger.log("Checking "+currentLog.getName());
+
+    //check to see if the log sheet we want exists
+    var logSheets = SpreadsheetApp.openById(logId).getSheets();
+
+    //boolian var to represent if log sheet exists
+    var sheetExists = false;
+
+    //loop through all sheets to make sure MonthToPull exists in the log
+    for(var w = 0; w<logSheets.length; w++){
+      if(logSheets[w].getName()==monthToPull){
+        var sheetExists = true;
+        break;
+      }
+    }
+    
+    //let's do stuff if it exists
+    if(sheetExists == true){
+    
+      //check if the sheet is complete (whether or not we need to email them)
+      var endOdimeter = SpreadsheetApp.openById(logId).getSheetByName(monthToPull).getRange("A39").getValue();
+
+      //if the sheet isn't complete send an email
+      if(endOdimeter == ""){
+        //Find Current Car log we are working with
+        var carNumber = SpreadsheetApp.openById(logId).getSheetByName("Car Number").getRange("A1").getValue();
+
+        //find that car log in the master data index
+        for(var e=0; carLogIndex[e] != carNumber; e++){
+          if (e>=carLogIndex.length){
+            Logger.log("The car wasn't found in the index... check master data");
+            break;
+          }
+        }
+        var currentCarInfoLine = e;
+
+        //Logger.log(areaEmailIndex[currentCarInfoLine][0]);
+        // Set the text body to attach to the email.
+        var body = "Make sure to finish your mileage log before the second of the month! Add all receipts and the end odometer! Do Not fill in the end odometer until you are completely done!"+ currentLog.getUrl(); 
+
+        // Construct the Subject Line
+        var subject = "Finish Your Car Log Reminder!";
+
+        //Time to send them an email
+        //MailApp.sendEmail(areaEmailIndex[currentCarInfoLine][0], subject, body);
+        var fleetReport = [fleetReport, currentLog.getName()];
+
+        //see if the car is shared
+        if(areaEmailIndex[currentCarInfoLine][1]!=""){
+          //MailApp.sendEmail(areaEmailIndex[currentCarInfoLine][1], subject, body);
+        }
+        
+      }else{
+        Logger.log("The mileage log '" +currentLog.getName()+"' is complete!");
+      }
+    }else{
+      Logger.log("Sheet '"+monthToPull+"' does not exist in '"+currentLog.getName()+"'!")
+    }
+  }
+  var report = fleetReport.toString();
+  var report = report.replaceAll(',', '\n');
+  MailApp.sendEmail(emailToSendTo, "Finish mileage Logs reminder report","An email was sent to remind missionaries to finish their car logs.\nEmail sent for:\n"+ report);
+}
+
+
+function updateMonthToCurrentMonth (){
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //get the current date
+  var d = new Date();
+  var month = d.getMonth();
+  month++;
+  var year = d.getFullYear();
+  
+  if (month >= 10){
+    master.getSheetByName("Script Master Sheet").getRange("A3").setValue(month);
+    master.getSheetByName("Script Master Sheet").getRange("B3").setValue(year);
+  }else{
+    master.getSheetByName("Script Master Sheet").getRange("A3").setValue("0"+month);
+    master.getSheetByName("Script Master Sheet").getRange("B3").setValue(year);
+  }
+  
+  
+}
+
+
+function updateMonthToPreviousMonth (){
+  // Set the Active Spreadsheet so we don't forget
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Script Master Sheet").activate();
+  var master = SpreadsheetApp.getActive();
+
+  //get the current date
+  var d = new Date();
+  var month = d.getMonth();  //if January - January = 0
+  var year = d.getFullYear();
+  if (month == 0){
+    var month = 12;
+    year--;
+  }
+  
+  
+  if (month >= 10){
+    master.getSheetByName("Script Master Sheet").getRange("A3").setValue(month);
+    master.getSheetByName("Script Master Sheet").getRange("B3").setValue(year);
+  }else{
+    master.getSheetByName("Script Master Sheet").getRange("A3").setValue("0"+month);
+    master.getSheetByName("Script Master Sheet").getRange("B3").setValue(year);
+  }
+  
+}
+
+
+// Trigger Functions
+function triggerCreateNextMonth(){
+  try{
+    updateMonthToCurrentMonth ();
+    createNextMonth(); //FIRST TIME
+  }
+  catch(err){
+    Logger.log("WE HAD AN ERROR ONCE, TRYING TO RUN createNextMonth() AGAIN!");
+    try{
+      updateMonthToCurrentMonth ();
+      createNextMonth(); //SECOND TIME
+    }
+    catch(err){
+      Logger.log("WE HAD AN ERROR TWICE, TRYING TO RUN createNextMonth() AGAIN!");
+      try{
+        updateMonthToCurrentMonth ();
+        createNextMonth(); //THIRD TIME
+      }
+      catch(err){
+        Logger.log("WE HAD AN ERROR THREE TIMES, RUN THE THING MANUALLY");
+      }
+    }
+  }
+}
+
+function triggerincompleteMileageLogsEmail(){
+  try{
+    updateMonthToPreviousMonth ();
+    incompleteMileageLogsEmail(); //FIRST TIME
+  }
+  catch(err){
+    Logger.log("WE HAD AN ERROR ONCE, TRYING TO RUN incompleteMileageLogsEmail() AGAIN!");
+    try{
+      updateMonthToPreviousMonth ();
+      incompleteMileageLogsEmail(); //SECOND TIME
+    }
+    catch(err){
+      Logger.log("WE HAD AN ERROR TWICE, TRYING TO RUN incompleteMileageLogsEmail() AGAIN!");
+      try{
+        updateMonthToPreviousMonth ();
+        incompleteMileageLogsEmail(); //THIRD TIME
+      }
+      catch(err){
+        Logger.log("WE HAD AN ERROR THREE TIMES, RUN THE THING MANUALLY");
+      }
+    }
+  }
+}
+
+function triggerprotectSheets(){
+  try{
+    updateMonthToCurrentMonth();
+    protectSheets(); //FIRST TIME
+    
+  }
+  catch(err){
+    Logger.log("WE HAD AN ERROR ONCE, TRYING TO RUN protectSheets() AGAIN!");
+    try{
+      updateMonthToCurrentMonth();
+      protectSheets(); //SECOND TIME
+    }
+    catch(err){
+      Logger.log("WE HAD AN ERROR TWICE, TRYING TO RUN protectSheets() AGAIN!");
+      try{
+        updateMonthToCurrentMonth();
+        protectSheets(); //THIRD TIME
+      }
+      catch(err){
+        Logger.log("WE HAD AN ERROR THREE TIMES, RUN THE THING MANUALLY");
+      }
+    }
+  }
+}
+
+function triggerfinishMileageLogsReminderEmail(){
+  try{
+    updateMonthToPreviousMonth ();
+    finishMileageLogsReminderEmail(); //FIRST TIME
+    updateMonthToCurrentMonth();
+  }
+  catch(err){
+    Logger.log("WE HAD AN ERROR ONCE, TRYING TO RUN finishMileageLogsReminderEmail() AGAIN!");
+    try{
+      updateMonthToPreviousMonth ();
+      finishMileageLogsReminderEmail(); //SECOND TIME
+      updateMonthToCurrentMonth();
+    }
+    catch(err){
+      Logger.log("WE HAD AN ERROR TWICE, TRYING TO RUN finishMileageLogsReminderEmail() AGAIN!");
+      try{
+        updateMonthToPreviousMonth ();
+        finishMileageLogsReminderEmail(); //THIRD TIME
+        updateMonthToCurrentMonth();
+      }
+      catch(err){
+        Logger.log("WE HAD AN ERROR THREE TIMES, RUN THE THING MANUALLY");
+      }
+    }
+  }
+}
+
+function triggeremailAllReportsLandscape(){
+  try{
+    updateMonthToPreviousMonth ();
+    emailAllReportsLandscape(); //first TIME
+    updateMonthToCurrentMonth();
+  }
+  catch(err){
+    Logger.log("WE ONLY WANT TO RUN THIS ONCE TO AVOID SPAM, SO RUN THE THING MANUALLY or check each mileage log separately!");
+  }
+}
+
+
